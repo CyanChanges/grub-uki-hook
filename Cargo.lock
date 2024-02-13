@@ -134,9 +134,23 @@ dependencies = [
  "colored",
  "env_logger",
  "glob",
+ "grub_mkconfig_lib",
  "indent",
  "log",
+ "once_cell",
  "regex",
+ "shell-quote",
+ "whoami",
+]
+
+[[package]]
+name = "grub_mkconfig_lib"
+version = "0.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d721ac23512cfd3886d3073a2d4d89689ea7e4343087eab397c8e2012f31f0d"
+dependencies = [
+ "indent",
+ "once_cell",
  "shell-quote",
  "whoami",
 ]

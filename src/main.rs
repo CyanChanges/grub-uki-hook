@@ -1,45 +1,26 @@
-mod menuentry;
+mod util;
+mod info;
 
 use std::env;
-use std::ffi::OsStr;
 use std::io::Write;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use glob::glob;
-use regex::{Captures, Regex};
 use log::{debug, info, warn};
 use colored::*;
-use crate::menuentry::MenuEntry;
+use glob::glob;
+use once_cell::sync::Lazy;
+use grub_mkconfig_lib::menu_entry::MenuEntry;
+use crate::util::get_os;
 
+#[allow(dead_code)]
 struct UKIInfo {
     name: Arc<str>,
     machine_id: Arc<str>,
     build_id: Arc<str>,
 }
 
-impl UKIInfo {
-    fn new(name: &str, machine_id: &str, build_id: &str) -> Self {
-        UKIInfo {
-            name: Arc::from(name),
-            machine_id: Arc::from(machine_id),
-            build_id: Arc::from(build_id),
-        }
-    }
-}
-
-fn get_info_from_file_name<'h>(prefix: &String, suffix: &String, file_name: &OsStr, pattern: Option<Regex>) -> Option<UKIInfo> {
-    let pattern = pattern.unwrap_or(Regex::new(
-        format!(r"{}([a-z\-]+?)-([a-z0-9]{{32}})-(rolling){}", regex::escape(prefix.as_str()), regex::escape(suffix)).as_str()
-    ).unwrap());
-
-    let (_, [name, machine_id, build_id]) = pattern.captures(file_name.to_str().unwrap())?.extract();
-    Some(UKIInfo::new(name, machine_id, build_id))
-}
-
-macro_rules! info_from {
-    ($prefix:expr, $suffix:expr, $file_name:expr) => { get_info_from_file_name($prefix, $suffix, $file_name, None) };
-    ($prefix:expr, $suffix:expr, $file_name:expr, $pattern:expr) => { get_info_from_file_name($prefix, $suffix, $file_name, $pattern) }
-}
+static OS: Lazy<Arc<String>> = Lazy::new(||Arc::from(get_os()));
 
 fn add_uki_entry(prefix: &String, suffix: &String, uki_file: PathBuf, uki_path: String) {
     let filename = uki_file.file_name().unwrap();
@@ -51,12 +32,14 @@ fn add_uki_entry(prefix: &String, suffix: &String, uki_file: PathBuf, uki_path: 
     let info = info_option.unwrap();
 
     info!("{} entry for {}", "adding".green(), info.name.blue());
+    debug!("{} build: {}, {}", info.name.blue(), info.build_id.cyan(), info.machine_id.cyan());
     std::io::stdout().write(
         MenuEntry::builder()
-            .name(format!("{} ({})", whoami::distro(), info.name).as_ref())
+            .name(format!("{} ({})", OS.deref(), info.name).as_ref())
             .insmod("fat")
-            .chainloader(Path::new(&uki_path).join(filename).to_str().unwrap()).clone()
-            .build()
+            .save_default()
+            .chainloader(Path::new(&uki_path).join(filename).to_str().unwrap())
+            .generate()
             .as_ref()
     ).unwrap();
     std::io::stdout().write(b"\n").unwrap();
@@ -73,7 +56,7 @@ fn main() {
     let uki_suffix = ".efi".to_string();
     let glob_path = uki_dir.join(uki_prefix.clone());
 
-    info!("{} in {}", "search".green(), uki_dir.to_str().unwrap().blue());
+    info!("{} in {}", "search".green(), uki_dir.to_string_lossy().blue());
 
     for uki_entry in glob(
         format!("{}*{uki_suffix}", glob_path.as_path().to_str().unwrap()).as_str()
